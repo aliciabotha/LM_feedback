@@ -223,3 +223,12 @@ process.on("SIGINT", () => {
 console.log("[BOT] Starting Discord connection...");
 
 client.login(DISCORD_TOKEN);
+
+// ────────────────────────────────────────────────────────────
+// Heartbeat - detect silent disconnections
+// ────────────────────────────────────────────────────────────
+
+setInterval(() => {
+  const status = client.isReady() ? "✓ Connected" : "✗ Disconnected";
+  console.log(`[BOT] Heartbeat - ${status}`);
+}, 60000);
