@@ -1,13 +1,13 @@
 {
-  "name": "feedtrack-discord-bot",
+  "name": "lm-feedback-bot",
   "version": "1.0.0",
   "type": "module",
   "main": "bot.mjs",
-  "engines": {
-    "node": "20.x"
-  },
   "scripts": {
     "start": "node bot.mjs"
+  },
+  "engines": {
+    "node": "20.x"
   },
   "dependencies": {
     "discord.js": "^14.15.3",
