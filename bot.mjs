@@ -201,11 +201,6 @@ client.on(Events.Error, (err) => {
   console.error("[BOT] Discord client error:", err);
 });
 
-client.on('messageCreate', message => {
-  console.log(`[DEBUG MSG] ${message.author.tag} in #${message.channel.name}: ${message.content}`);
-  // existing code...
-});
-
 // ────────────────────────────────────────────────────────────
 // Global error handlers
 // ────────────────────────────────────────────────────────────
