@@ -1,42 +1,41 @@
 // ============================================================
-//  FeedTrack Discord Bot  —  drop this file into VS Code
-//  Run:  node bot.mjs
-//  Requires Node 18+  and  npm install  (discord.js + dotenv)
+// FeedTrack Discord Bot — drop this file into VS Code
+// Run: node bot.mjs
+// Requires Node 18+ and npm install (discord.js + dotenv)
 // ============================================================
 //
-//  WHAT THIS BOT DOES
-//  ─────────────────────────────────────────────────────────
-//  • Connects to Discord and reads EVERY text channel
-//    in every server the bot is invited to
-//  • ONLY acts when a message contains a feedback category:
-//      FB  CR  SF  GS  MS  DOCK
-//  • From each matching message it extracts:
-//      manager  — the Discord display name of the sender
-//      chatter  — the first @mention in the message
-//      model    — parsed from channel name or message text
-//      category — FB / CR / SF / GS / MS / DOCK
-//  • Sends that data silently to Supabase (via Edge Function)
-//  • NEVER writes or replies to any Discord channel
+// WHAT THIS BOT DOES
+// ─────────────────────────────────────────────────────────
+// • Connects to Discord and reads EVERY text channel
+// in every server the bot is invited to
+// • ONLY acts when a message contains a feedback category:
+// FB CR SF GS MS DOCK
+// • From each matching message it extracts:
+// manager — the Discord display name of the sender
+// chatter — the first @mention in the message
+// model — parsed from channel name or message text
+// category — FB / CR / SF / GS / MS / DOCK
+// • Sends that data silently to Supabase (via Edge Function)
+// • NEVER writes or replies to any Discord channel
 //
-//  SETUP IN VS CODE
-//  ─────────────────────────────────────────────────────────
-//  1.  Copy this folder (discord-bot/) to any location
-//  2.  Open a terminal in that folder
-//  3.  Run:  npm install
-//  4.  Create a file called  .env  (copy from .env.example)
-//        DISCORD_TOKEN=your_bot_token
-//        SUPABASE_WEBHOOK_URL=https://xxx.supabase.co/functions/v1/discord-webhook
-//        BOT_API_SECRET=same_secret_as_in_supabase
-//  5.  Run:  node bot.mjs
+// SETUP IN VS CODE
+// ─────────────────────────────────────────────────────────
+// 1. Copy this folder (discord-bot/) to any location
+// 2. Open a terminal in that folder
+// 3. Run: npm install
+// 4. Create a file called .env (copy from .env.example)
+// DISCORD_TOKEN=your_bot_token
+// SUPABASE_WEBHOOK_URL=https://xxx.supabase.co/functions/v1/discord-webhook
+// BOT_API_SECRET=same_secret_as_in_supabase
+// 5. Run: node bot.mjs
 //
-//  DISCORD BOT PERMISSIONS NEEDED
-//  ─────────────────────────────────────────────────────────
-//  In the Discord Developer Portal, under Bot → Privileged Intents
-//  enable:  MESSAGE CONTENT INTENT
-//  Bot invite scopes needed: bot
-//  Bot permissions needed:   Read Messages / View Channels
+// DISCORD BOT PERMISSIONS NEEDED
+// ─────────────────────────────────────────────────────────
+// In the Discord Developer Portal, under Bot → Privileged Intents
+// enable: MESSAGE CONTENT INTENT
+// Bot invite scopes needed: bot
+// Bot permissions needed: Read Messages / View Channels
 // ============================================================
-
 import "dotenv/config";
 import { createRequire } from "module";
 import { detectCategory, extractChatter, extractModel } from "./parser.mjs";
@@ -45,9 +44,9 @@ const { Client, GatewayIntentBits, Events, ChannelType } = require("discord.js")
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const DISCORD_TOKEN    = process.env.DISCORD_TOKEN;
-const WEBHOOK_URL      = process.env.SUPABASE_WEBHOOK_URL;
-const BOT_SECRET       = process.env.BOT_API_SECRET || "";
+const DISCORD_TOKEN = (process.env.DISCORD_TOKEN || "").trim();
+const WEBHOOK_URL = (process.env.SUPABASE_WEBHOOK_URL || "").trim();
+const BOT_SECRET = (process.env.BOT_API_SECRET || "").trim();
 
 // Optional: restrict to specific guild (server) IDs — comma-separated.
 // Leave blank to work in ALL servers.
@@ -64,17 +63,34 @@ if (!WEBHOOK_URL) {
   process.exit(1);
 }
 
+// ─── Sanitize header values ──────────────────────────────────────────────────
+
+function sanitizeHeaderValue(value) {
+  if (!value) return "";
+  return String(value)
+    .trim()
+    .replace(/[\r\n\t]/g, "")
+    .replace(/[^\x20-\x7E]/g, "");
+}
+
 // ─── Supabase poster ─────────────────────────────────────────────────────────
 
 // Sends parsed feedback data to the Supabase Edge Function.
 // The bot NEVER writes to Discord — only here.
 async function sendToSupabase(payload) {
   try {
+    const sanitizedSecret = sanitizeHeaderValue(BOT_SECRET);
+
+    if (!sanitizedSecret) {
+      console.error("[BOT] ERROR: BOT_API_SECRET is empty or invalid");
+      return null;
+    }
+
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {
-        "Content-Type":  "application/json",
-        "x-bot-secret":  BOT_SECRET,
+        "Content-Type": "application/json",
+        "x-bot-secret": sanitizedSecret,
       },
       body: JSON.stringify(payload),
     });
@@ -101,28 +117,28 @@ function shouldWatchGuild(guildId) {
 
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds,           // access server + channel list
-    GatewayIntentBits.GuildMessages,    // receive messages
-    GatewayIntentBits.MessageContent,   // read message text (privileged intent)
+    GatewayIntentBits.Guilds, // access server + channel list
+    GatewayIntentBits.GuildMessages, // receive messages
+    GatewayIntentBits.MessageContent, // read message text (privileged intent)
   ],
 });
 
 client.once(Events.ClientReady, (c) => {
   console.log("─────────────────────────────────────────────");
   console.log(`[BOT] Online as: ${c.user.tag}`);
-  console.log(`[BOT] Webhook:   ${WEBHOOK_URL}`);
-  console.log(`[BOT] Guilds:    ${WATCH_GUILDS.length > 0 ? WATCH_GUILDS.join(", ") : "ALL"}`);
+  console.log(`[BOT] Webhook: ${WEBHOOK_URL}`);
+  console.log(`[BOT] Guilds: ${WATCH_GUILDS.length > 0 ? WATCH_GUILDS.join(", ") : "ALL"}`);
   console.log("[BOT] Watching: ALL channels (read-only, no Discord replies)");
-  console.log("[BOT] Triggers: FB  CR  SF  GS  MS  DOCK");
-  console.log("[BOT] Extracting: manager  |  chatter  |  model (when available)");
+  console.log("[BOT] Triggers: FB CR SF GS MS DOCK");
+  console.log("[BOT] Extracting: manager | chatter | model (when available)");
   console.log("─────────────────────────────────────────────\n");
 });
 
 // This fires for every new message in every channel the bot can see.
 client.on(Events.MessageCreate, async (message) => {
   // Never process bot messages or empty messages
-  if (message.author.bot)         return;
-  if (!message.content?.trim())   return;
+  if (message.author.bot) return;
+  if (!message.content?.trim()) return;
 
   // Only text channels inside guilds (not DMs, threads, forums, etc.)
   if (message.channel.type !== ChannelType.GuildText) return;
@@ -131,7 +147,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (!shouldWatchGuild(message.guildId)) return;
 
   const channelName = message.channel.name ?? "";
-  const content     = message.content;
+  const content = message.content;
 
   // Check if this message contains a feedback category
   const category = detectCategory(content, channelName);
@@ -140,18 +156,18 @@ client.on(Events.MessageCreate, async (message) => {
   // Extract the three key fields
   const manager = message.member?.displayName ?? message.author.username;
   const chatter = extractChatter(content);
-  const model   = extractModel(content, channelName);
+  const model = extractModel(content, channelName);
 
   // Build the payload and send to Supabase
   const result = await sendToSupabase({
     type: "single",
     message: {
       content,
-      author:     manager,
-      channel:    channelName,
+      author: manager,
+      channel: channelName,
       message_id: message.id,
-      timestamp:  message.createdAt.toISOString(),
-      has_image:  message.attachments.size > 0,
+      timestamp: message.createdAt.toISOString(),
+      has_image: message.attachments.size > 0,
     },
   });
 
@@ -160,9 +176,9 @@ client.on(Events.MessageCreate, async (message) => {
     const parts = [`[${category}]`];
     parts.push(`manager: ${manager}`);
     if (chatter) parts.push(`chatter: @${chatter}`);
-    if (model)   parts.push(`model: ${model}`);
+    if (model) parts.push(`model: ${model}`);
     parts.push(`#${channelName}`);
-    console.log("[BOT] Saved →", parts.join("  |  "));
+    console.log("[BOT] Saved →", parts.join(" | "));
   } else if (result?.message === "Not a feedback message") {
     // edge function didn't recognize it — safe to ignore
   } else if (result) {
