@@ -92,11 +92,14 @@ function shouldWatchGuild(guildId) {
 // Discord Client
 // ────────────────────────────────────────────────────────────
 
+import { Client, GatewayIntentBits } from 'discord.js';
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.MessageContent,  // ← add this
+    // add others if present
   ],
 });
 
