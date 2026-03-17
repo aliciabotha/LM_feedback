@@ -1,17 +1,19 @@
-# Use official Node.js 20 image
+# Use official Node.js image
 FROM node:20-slim
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files and install deps
+# Copy package.json and package-lock.json
 COPY package*.json ./
+
+# Install dependencies
 RUN npm install --production
 
-# Copy all bot files
+# Copy all other files
 COPY . .
 
-# Expose port for Fly.io health check
+# Expose port for Fly.io health checks
 EXPOSE 3000
 
 # Start the bot
