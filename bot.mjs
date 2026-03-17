@@ -186,6 +186,21 @@ console.log("[BOT] Starting Discord connection...");
 
 client.login(DISCORD_TOKEN);
 
+// ────────────────────────────────────────────────────────────
+// Keep-alive web server (REQUIRED for Fly.io)
+// ────────────────────────────────────────────────────────────
+import express from "express";
+
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Bot is alive");
+});
+
+app.listen(3000, "0.0.0.0", () => {
+  console.log("[WEB] Server running on port 3000");
+});
+
 setInterval(() => {
   const status = client.isReady() ? "Connected" : "Disconnected";
   console.log(`[BOT] Heartbeat - ${status}`);
