@@ -173,3 +173,18 @@ setInterval(() => {
   const status = client.isReady() ? "Connected" : "Disconnected";
   console.log(`[BOT] Heartbeat - ${status}`);
 }, 60000);
+
+import fetch from "node-fetch"; // add at top if not already imported
+
+setInterval(async () => {
+  const status = client.isReady() ? "Connected" : "Disconnected";
+  console.log(`[BOT] Heartbeat - ${status}`);
+
+  // Self-ping the keep-alive server
+  try {
+    await fetch("http://localhost:3000/");
+    console.log("[BOT] Keep-alive ping successful");
+  } catch (err) {
+    console.warn("[BOT] Keep-alive ping failed:", err.message);
+  }
+}, 60000);
