@@ -4,6 +4,7 @@
 // ============================================================
 
 import "dotenv/config";
+import express from "express"; // ✅ keep-alive server import at top
 import { createRequire } from "module";
 import { detectCategory, extractChatter, extractModel } from "./parser.mjs";
 
@@ -189,8 +190,6 @@ client.login(DISCORD_TOKEN);
 // ────────────────────────────────────────────────────────────
 // Keep-alive web server (REQUIRED for Fly.io)
 // ────────────────────────────────────────────────────────────
-import express from "express";
-
 const app = express();
 
 app.get("/", (req, res) => {
@@ -201,6 +200,9 @@ app.listen(3000, "0.0.0.0", () => {
   console.log("[WEB] Server running on port 3000");
 });
 
+// ────────────────────────────────────────────────────────────
+// Heartbeat log
+// ────────────────────────────────────────────────────────────
 setInterval(() => {
   const status = client.isReady() ? "Connected" : "Disconnected";
   console.log(`[BOT] Heartbeat - ${status}`);
