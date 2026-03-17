@@ -1,32 +1,14 @@
 // ============================================================
-// FeedTrack Discord Bot (Fly.io Production Version)
+// FeedTrack Discord Bot
+// Production version with stability improvements for Railway
 // ============================================================
 
 import "dotenv/config";
-import fetch from "node-fetch";
-import http from "http";
 import { createRequire } from "module";
 import { detectCategory, extractChatter, extractModel } from "./parser.mjs";
 
 const require = createRequire(import.meta.url);
 const { Client, GatewayIntentBits, Events, ChannelType } = require("discord.js");
-
-// ────────────────────────────────────────────────────────────
-// Keep-alive server (REQUIRED for Fly.io)
-// ────────────────────────────────────────────────────────────
-
-http
-  .createServer((req, res) => {
-    res.writeHead(200);
-    res.end("Bot is alive");
-  })
-  .listen(3000, () => {
-    console.log("[BOT] Keep-alive server running on port 3000");
-  });
-
-// ────────────────────────────────────────────────────────────
-// Environment Variables
-// ────────────────────────────────────────────────────────────
 
 const DISCORD_TOKEN = (process.env.DISCORD_TOKEN || "").trim();
 const WEBHOOK_URL = (process.env.SUPABASE_WEBHOOK_URL || "").trim();
@@ -46,10 +28,6 @@ if (!WEBHOOK_URL) {
   process.exit(1);
 }
 
-// ────────────────────────────────────────────────────────────
-// Helper: sanitize headers
-// ────────────────────────────────────────────────────────────
-
 function sanitizeHeaderValue(value) {
   if (!value) return "";
   return String(value)
@@ -57,10 +35,6 @@ function sanitizeHeaderValue(value) {
     .replace(/[\r\n\t]/g, "")
     .replace(/[^\x20-\x7E]/g, "");
 }
-
-// ────────────────────────────────────────────────────────────
-// Send data to Supabase
-// ────────────────────────────────────────────────────────────
 
 async function sendToSupabase(payload) {
   try {
@@ -70,8 +44,6 @@ async function sendToSupabase(payload) {
       console.error("[BOT] BOT_API_SECRET invalid");
       return null;
     }
-
-    console.log("[BOT] Sending →", JSON.stringify(payload));
 
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",
@@ -88,28 +60,17 @@ async function sendToSupabase(payload) {
       return null;
     }
 
-    const data = await res.json();
-    console.log("[BOT] Supabase response →", data);
-
-    return data;
+    return await res.json();
   } catch (err) {
     console.error("[BOT] Network error:", err.message);
     return null;
   }
 }
 
-// ────────────────────────────────────────────────────────────
-// Guild filtering
-// ────────────────────────────────────────────────────────────
-
 function shouldWatchGuild(guildId) {
   if (WATCH_GUILDS.length === 0) return true;
   return WATCH_GUILDS.includes(guildId);
 }
-
-// ────────────────────────────────────────────────────────────
-// Discord Client
-// ────────────────────────────────────────────────────────────
 
 const client = new Client({
   intents: [
@@ -118,10 +79,6 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
-
-// ────────────────────────────────────────────────────────────
-// Startup
-// ────────────────────────────────────────────────────────────
 
 client.once(Events.ClientReady, (c) => {
   console.log("─────────────────────────────────────────────");
@@ -138,35 +95,26 @@ client.once(Events.ClientReady, (c) => {
   console.log("─────────────────────────────────────────────\n");
 });
 
-// ────────────────────────────────────────────────────────────
-// Message Listener
-// ────────────────────────────────────────────────────────────
-
 client.on(Events.MessageCreate, async (message) => {
   try {
     if (message.author.bot) return;
     if (!message.content?.trim()) return;
+
     if (message.channel.type !== ChannelType.GuildText) return;
     if (!shouldWatchGuild(message.guildId)) return;
 
     const channelName = message.channel.name ?? "";
     const content = message.content;
 
-    console.log("[BOT] Message received →", content);
-
     const category = detectCategory(content, channelName);
-    if (!category) {
-      console.log("[BOT] Skipped (no category match)");
-      return;
-    }
+    if (!category) return;
 
-    const manager =
-      message.member?.displayName ?? message.author.username;
+    const manager = message.member?.displayName ?? message.author.username;
 
     const chatter = extractChatter(content);
     const model = extractModel(content, channelName);
 
-    const payload = {
+    const result = await sendToSupabase({
       type: "single",
       message: {
         content,
@@ -179,28 +127,26 @@ client.on(Events.MessageCreate, async (message) => {
         chatter,
         model,
       },
-    };
-
-    const result = await sendToSupabase(payload);
+    });
 
     if (result?.success) {
-      const parts = [`[${category}]`, `manager: ${manager}`];
+      const parts = [`[${category}]`];
+      parts.push(`manager: ${manager}`);
       if (chatter) parts.push(`chatter: @${chatter}`);
       if (model) parts.push(`model: ${model}`);
       parts.push(`#${channelName}`);
 
       console.log("[BOT] Saved →", parts.join(" | "));
-    } else {
-      console.warn("[BOT] Not saved");
+    } else if (result) {
+      console.warn(
+        "[BOT] Not saved:",
+        result.error ?? result.message ?? "unknown"
+      );
     }
   } catch (err) {
     console.error("[BOT] Message processing error:", err);
   }
 });
-
-// ────────────────────────────────────────────────────────────
-// Connection diagnostics
-// ────────────────────────────────────────────────────────────
 
 client.on("disconnect", () => {
   console.warn("[BOT] Disconnected from Discord");
@@ -214,13 +160,13 @@ client.on("resume", () => {
   console.log("[BOT] Connection resumed");
 });
 
-client.on(Events.Error, (err) => {
-  console.error("[BOT] Discord error:", err);
+client.on("warn", (info) => {
+  console.warn("[BOT] Discord warning:", info);
 });
 
-// ────────────────────────────────────────────────────────────
-// Global error handling
-// ────────────────────────────────────────────────────────────
+client.on(Events.Error, (err) => {
+  console.error("[BOT] Discord client error:", err);
+});
 
 process.on("unhandledRejection", (err) => {
   console.error("[BOT] Unhandled rejection:", err);
@@ -230,18 +176,17 @@ process.on("uncaughtException", (err) => {
   console.error("[BOT] Uncaught exception:", err);
 });
 
-// ────────────────────────────────────────────────────────────
-// Start bot
-// ────────────────────────────────────────────────────────────
+process.on("SIGINT", () => {
+  console.log("[BOT] Shutdown signal received");
+  client.destroy();
+  process.exit(0);
+});
 
 console.log("[BOT] Starting Discord connection...");
+
 client.login(DISCORD_TOKEN);
 
-// ────────────────────────────────────────────────────────────
-// Heartbeat
-// ────────────────────────────────────────────────────────────
-
 setInterval(() => {
-  const status = client.isReady() ? "✓ Connected" : "✗ Disconnected";
+  const status = client.isReady() ? "Connected" : "Disconnected";
   console.log(`[BOT] Heartbeat - ${status}`);
 }, 60000);
