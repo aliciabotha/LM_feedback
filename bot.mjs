@@ -1,14 +1,28 @@
 // ============================================================
-// FeedTrack Discord Bot
-// Production version with stability improvements for Railway
+// FeedTrack Discord Bot (Fly.io Production Version)
 // ============================================================
 
 import "dotenv/config";
+import fetch from "node-fetch";
+import http from "http";
 import { createRequire } from "module";
 import { detectCategory, extractChatter, extractModel } from "./parser.mjs";
 
 const require = createRequire(import.meta.url);
 const { Client, GatewayIntentBits, Events, ChannelType } = require("discord.js");
+
+// ────────────────────────────────────────────────────────────
+// Keep-alive server (REQUIRED for Fly.io)
+// ────────────────────────────────────────────────────────────
+
+http
+  .createServer((req, res) => {
+    res.writeHead(200);
+    res.end("Bot is alive");
+  })
+  .listen(3000, () => {
+    console.log("[BOT] Keep-alive server running on port 3000");
+  });
 
 // ────────────────────────────────────────────────────────────
 // Environment Variables
@@ -57,6 +71,8 @@ async function sendToSupabase(payload) {
       return null;
     }
 
+    console.log("[BOT] Sending →", JSON.stringify(payload));
+
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",
       headers: {
@@ -72,41 +88,15 @@ async function sendToSupabase(payload) {
       return null;
     }
 
-    return await res.json();
+    const data = await res.json();
+    console.log("[BOT] Supabase response →", data);
+
+    return data;
   } catch (err) {
     console.error("[BOT] Network error:", err.message);
     return null;
   }
 }
-
-// BEFORE (line ~115 in index.mjs):
-const result = await sendToSupabase({
-  type: "single",
-  message: {
-    content,
-    author: manager,
-    channel: channelName,
-    message_id: message.id,
-    timestamp: message.createdAt.toISOString(),
-    has_image: message.attachments.size > 0,
-  },
-});
-
-// AFTER:
-const result = await sendToSupabase({
-  type: "single",
-  message: {
-    content,
-    author: manager,
-    channel: channelName,
-    message_id: message.id,
-    timestamp: message.createdAt.toISOString(),
-    has_image: message.attachments.size > 0,
-    category,
-    chatter,
-    model,
-  },
-});
 
 // ────────────────────────────────────────────────────────────
 // Guild filtering
@@ -125,7 +115,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,  
+    GatewayIntentBits.MessageContent,
   ],
 });
 
@@ -156,15 +146,19 @@ client.on(Events.MessageCreate, async (message) => {
   try {
     if (message.author.bot) return;
     if (!message.content?.trim()) return;
-
     if (message.channel.type !== ChannelType.GuildText) return;
     if (!shouldWatchGuild(message.guildId)) return;
 
     const channelName = message.channel.name ?? "";
     const content = message.content;
 
+    console.log("[BOT] Message received →", content);
+
     const category = detectCategory(content, channelName);
-    if (!category) return;
+    if (!category) {
+      console.log("[BOT] Skipped (no category match)");
+      return;
+    }
 
     const manager =
       message.member?.displayName ?? message.author.username;
@@ -172,7 +166,7 @@ client.on(Events.MessageCreate, async (message) => {
     const chatter = extractChatter(content);
     const model = extractModel(content, channelName);
 
-    const result = await sendToSupabase({
+    const payload = {
       type: "single",
       message: {
         content,
@@ -181,22 +175,23 @@ client.on(Events.MessageCreate, async (message) => {
         message_id: message.id,
         timestamp: message.createdAt.toISOString(),
         has_image: message.attachments.size > 0,
+        category,
+        chatter,
+        model,
       },
-    });
+    };
+
+    const result = await sendToSupabase(payload);
 
     if (result?.success) {
-      const parts = [`[${category}]`];
-      parts.push(`manager: ${manager}`);
+      const parts = [`[${category}]`, `manager: ${manager}`];
       if (chatter) parts.push(`chatter: @${chatter}`);
       if (model) parts.push(`model: ${model}`);
       parts.push(`#${channelName}`);
 
       console.log("[BOT] Saved →", parts.join(" | "));
-    } else if (result) {
-      console.warn(
-        "[BOT] Not saved:",
-        result.error ?? result.message ?? "unknown"
-      );
+    } else {
+      console.warn("[BOT] Not saved");
     }
   } catch (err) {
     console.error("[BOT] Message processing error:", err);
@@ -204,7 +199,7 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 // ────────────────────────────────────────────────────────────
-// Discord connection diagnostics
+// Connection diagnostics
 // ────────────────────────────────────────────────────────────
 
 client.on("disconnect", () => {
@@ -219,16 +214,12 @@ client.on("resume", () => {
   console.log("[BOT] Connection resumed");
 });
 
-client.on("warn", (info) => {
-  console.warn("[BOT] Discord warning:", info);
-});
-
 client.on(Events.Error, (err) => {
-  console.error("[BOT] Discord client error:", err);
+  console.error("[BOT] Discord error:", err);
 });
 
 // ────────────────────────────────────────────────────────────
-// Global error handlers
+// Global error handling
 // ────────────────────────────────────────────────────────────
 
 process.on("unhandledRejection", (err) => {
@@ -239,22 +230,15 @@ process.on("uncaughtException", (err) => {
   console.error("[BOT] Uncaught exception:", err);
 });
 
-process.on("SIGINT", () => {
-  console.log("[BOT] Shutdown signal received");
-  client.destroy();
-  process.exit(0);
-});
-
 // ────────────────────────────────────────────────────────────
 // Start bot
 // ────────────────────────────────────────────────────────────
 
 console.log("[BOT] Starting Discord connection...");
-
 client.login(DISCORD_TOKEN);
 
 // ────────────────────────────────────────────────────────────
-// Heartbeat - detect silent disconnections
+// Heartbeat
 // ────────────────────────────────────────────────────────────
 
 setInterval(() => {
