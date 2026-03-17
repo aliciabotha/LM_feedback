@@ -79,6 +79,35 @@ async function sendToSupabase(payload) {
   }
 }
 
+// BEFORE (line ~115 in index.mjs):
+const result = await sendToSupabase({
+  type: "single",
+  message: {
+    content,
+    author: manager,
+    channel: channelName,
+    message_id: message.id,
+    timestamp: message.createdAt.toISOString(),
+    has_image: message.attachments.size > 0,
+  },
+});
+
+// AFTER:
+const result = await sendToSupabase({
+  type: "single",
+  message: {
+    content,
+    author: manager,
+    channel: channelName,
+    message_id: message.id,
+    timestamp: message.createdAt.toISOString(),
+    has_image: message.attachments.size > 0,
+    category,
+    chatter,
+    model,
+  },
+});
+
 // ────────────────────────────────────────────────────────────
 // Guild filtering
 // ────────────────────────────────────────────────────────────
